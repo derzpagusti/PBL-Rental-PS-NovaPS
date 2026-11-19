@@ -1,8 +1,8 @@
 /*
  * Order Detail / receipt page (?order=<id>).
- * Requires js/shared/session.js and orders.js.
- * Shows the receipt that matches the order status (pending, canceled, ...),
- * and the live countdown while the unit is in the customer's hands.
+ * Requires js/shared/session.js, orders.js and cancel-order.js.
+ * Shows the receipt that matches the order status. While units are in the
+ * customer's hands, every unit has its own live countdown.
  */
 (function () {
   function $(id) {
@@ -48,7 +48,7 @@
       tone: "text-green-500",
       glyph: "check",
       title: "Enjoy Your Rental!",
-      text: "The unit is with you. Return it before the time runs out, or extend your rental.",
+      text: "The unit is with you. Return it before its time runs out, or extend it.",
       note: "",
     },
     returned: {
@@ -82,7 +82,7 @@
     },
     pending: {
       title: "Extension Payment Received",
-      text: "Your extra time is already added to your rental. We are waiting for the admin to verify the payment.",
+      text: "We are waiting for the admin to verify the payment. The extra time is added after that.",
     },
     complete: {
       title: "Extension Complete",
@@ -92,15 +92,100 @@
     canceled: { title: "Extension Canceled", text: "" },
     rejected: {
       title: "Extension Rejected",
-      text: "The extension was rejected, so the extra time was removed from your rental.",
+      text: "The extension was rejected. Your clock continues where it stopped.",
     },
   };
 
   var badge = $("badge");
   var timer = null;
+  var pills = []; // { el, entry, key } live countdowns of the units
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
 
   function when(iso) {
     return NovaPS.formatDate(iso) + ", " + NovaPS.formatTime(iso);
+  }
+
+  function pillClass(ms) {
+    return (
+      "rounded-md px-2.5 py-0.5 text-sm text-white tabular-nums " +
+      NovaPS.rentalTone(ms).pill
+    );
+  }
+
+  // One line per unit: name, its own countdown and its own Extend button
+  function renderUnitTimers(order) {
+    var box = $("unit-timers");
+    box.textContent = "";
+    pills = [];
+    var many = order.items.length > 1;
+
+    order.items.forEach(function (item, index) {
+      var entry = NovaPS.rentals.entry(order, index);
+      var name = NovaPS.PRODUCTS[item.unit].name;
+      var row = el(
+        "div",
+        "flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 px-3 py-2",
+      );
+      var left = el("div", "min-w-0 leading-tight");
+      left.appendChild(
+        el(
+          "p",
+          "text-sm font-semibold",
+          name + (many ? " · Unit #" + (index + 1) : ""),
+        ),
+      );
+      var details =
+        NovaPS.formatDays(item.days) +
+        (item.extraDays
+          ? " + " + NovaPS.formatDays(item.extraDays) + " extended"
+          : "");
+      left.appendChild(el("p", "text-xs text-slate-500", details));
+      row.appendChild(left);
+
+      var right = el("div", "flex items-center gap-2");
+      if (item.returnedAt) {
+        right.appendChild(
+          el(
+            "span",
+            "text-sm text-slate-900",
+            "Returned " +
+              NovaPS.formatDate(item.returnedAt) +
+              (item.returnedLate ? " (overdue)" : ""),
+          ),
+        );
+      } else {
+        var ms = NovaPS.rentals.msLeft(entry);
+        var pill = el("span", pillClass(ms), NovaPS.formatHMS(ms));
+        pills.push({ el: pill, entry: entry, key: NovaPS.rentalTone(ms).key });
+        right.appendChild(pill);
+        if (NovaPS.rentals.pendingExtension(entry)) {
+          right.appendChild(
+            el("span", "text-xs text-indigo-500", "Extension waiting"),
+          );
+        } else if (ms > 0 && NovaPS.rentals.maxExtend(entry) > 0) {
+          var extend = el(
+            "a",
+            "btn btn-indigo px-3 py-1 text-xs font-semibold",
+            "Extend",
+          );
+          extend.href =
+            "extend.html?order=" +
+            encodeURIComponent(order.id) +
+            "&unit=" +
+            index;
+          right.appendChild(extend);
+        }
+      }
+      row.appendChild(right);
+      box.appendChild(row);
+    });
+    box.hidden = false;
   }
 
   function render() {
@@ -112,7 +197,7 @@
       extension ? EXTENSION_VIEWS[order.status] : {},
     );
     var status = NovaPS.STATUS[order.status];
-    var rental = !extension && order.status === "complete"; // unit is in the customer's hands
+    var rental = !extension && order.status === "complete"; // units are in the customer's hands
 
     badge.setAttribute(
       "class",
@@ -131,52 +216,41 @@
 
     // Rows: Order ID, Status, Customer, Address, Date (+ dates / reason / notes), units, total
     var extra = [{ label: "Date", value: when(order.createdAt) }];
-    if (rental || order.status === "returned") {
-      if (order.completedAt)
-        extra.push({ label: "Delivered", value: when(order.completedAt) });
-      var due = new Date(NovaPS.rentals.dueAt(order)).toISOString();
-      if (rental) extra.push({ label: "Return before", value: when(due) });
-      if (order.extraDays)
-        extra.push({
-          label: "Extended",
-          value: "+" + NovaPS.formatDays(order.extraDays),
-        });
-      if (order.returnedAt)
-        extra.push({
-          label: "Returned",
-          value:
-            NovaPS.formatDate(order.returnedAt) +
-            (order.returnedLate ? " (overdue)" : ""),
-        });
-      if (order.lateFee)
-        extra.push({
-          label: "Late fee",
-          value: NovaPS.money(order.lateFee),
-          valueClass: "text-red-600",
-        });
+    if ((rental || order.status === "returned") && order.completedAt) {
+      extra.push({ label: "Delivered", value: when(order.completedAt) });
+    }
+    if (order.status === "returned" && order.returnedAt) {
+      extra.push({
+        label: "Returned",
+        value:
+          NovaPS.formatDate(order.returnedAt) +
+          (order.returnedLate ? " (overdue)" : ""),
+      });
+    }
+    var lateFee = extension ? 0 : NovaPS.lateFeeOf(order);
+    if (lateFee)
+      extra.push({
+        label: "Late fee",
+        value: NovaPS.money(lateFee),
+        valueClass: "text-red-600",
+      });
+    if (extension) {
+      extra.push({
+        label: "Extended unit",
+        value:
+          "Unit #" + ((order.parentIndex || 0) + 1) + " of " + order.parentId,
+      });
     }
     if (order.status === "canceled")
       extra.push({ label: "Reason", value: order.cancelReason });
     if (order.status === "rejected" && order.rejectReason) {
       extra.push({ label: "Reason", value: order.rejectReason });
     }
-    var waiting = rental ? NovaPS.rentals.pendingExtension(order) : null;
-    if (waiting) {
-      extra.push({
-        label: "Extension",
-        value:
-          "+" +
-          NovaPS.formatDays(waiting.items[0].days) +
-          ", waiting for admin verification",
-        valueClass: "text-indigo-500",
-      });
-    }
     if (order.notes) extra.push({ label: "Notes", value: order.notes });
     order.extra = extra;
 
     var header = [{ label: "Order ID", value: order.id }];
-    if (extension)
-      header.push({ label: "Type", value: "Extension of " + order.parentId });
+    if (extension) header.push({ label: "Type", value: "Extension" });
     header.push({
       label: "Status",
       value: status.label,
@@ -185,18 +259,21 @@
     NovaPS.renderRows($("rows"), NovaPS.summaryRows(order, header, true));
 
     var unpaid = order.status === "not_paid";
-    $("pay-box").hidden = !(unpaid || rental);
-    $("pay-box-label").textContent = rental
-      ? "Time remaining"
-      : "Time left to pay";
+    $("pay-box").hidden = !unpaid;
+    $("pay-box-label").textContent = "Time left to pay";
     $("act-cancel").hidden = !unpaid;
     $("act-pay").hidden = !unpaid;
     $("act-pay").href = "payment.html?order=" + encodeURIComponent(order.id);
-    $("act-extend").hidden =
-      !rental || !!waiting || NovaPS.rentals.maxExtend(order) < 1;
-    $("act-extend").href = "extend.html?order=" + encodeURIComponent(order.id);
+    $("act-extend").hidden = true; // every unit has its own Extend button below
     $("act-again").hidden = order.status !== "returned" || extension;
     $("act-again").href = "order-form.html?unit=" + order.items[0].unit;
+
+    if (rental || (!extension && order.status === "returned")) {
+      renderUnitTimers(order);
+    } else {
+      $("unit-timers").hidden = true;
+      pills = [];
+    }
 
     clearInterval(timer);
     if (unpaid || rental) {
@@ -205,21 +282,26 @@
     }
   }
 
-  // Unpaid: 5 minute countdown (flips to "Canceled"). Rental: time left (green -> red).
+  // Unpaid: 5 minute countdown (flips to "Canceled"). Rental: every unit's time left.
   function tick() {
     var order = NovaPS.orders.get(id);
-    var countdown = $("countdown");
     if (order.status === "not_paid") {
+      var countdown = $("countdown");
       countdown.textContent = NovaPS.formatClock(
         NovaPS.orders.msLeft(order),
         true,
       );
       countdown.className = "font-display text-4xl font-bold text-black";
     } else if (order.status === "complete" && order.type !== "extend") {
-      var left = NovaPS.rentals.msLeft(order);
-      countdown.textContent = NovaPS.formatHMS(left);
-      countdown.className =
-        "font-display text-4xl font-bold " + NovaPS.rentalTone(left).text;
+      var changed = false;
+      pills.forEach(function (p) {
+        var ms = NovaPS.rentals.msLeft(p.entry);
+        p.el.textContent = NovaPS.formatHMS(ms);
+        p.el.className = pillClass(ms);
+        if (NovaPS.rentalTone(ms).key !== p.key) changed = true;
+      });
+      // a colour changed (e.g. a unit became overdue): rebuild the lines once
+      if (changed) renderUnitTimers(order);
     } else {
       render();
     }

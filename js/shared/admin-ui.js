@@ -248,12 +248,16 @@ window.NovaAdmin = (function () {
     var m = modal(root);
     var currentId = null;
 
-    function act(action, reason, message) {
+    function act(action, reason, message, index) {
       try {
-        var done = NovaPS.orders.adminAct(currentId, action, reason);
+        var done = NovaPS.orders.adminAct(currentId, action, reason, index);
+        var fee =
+          action === "return" && done.items[index]
+            ? done.items[index].lateFee
+            : 0;
         toast(
-          done.lateFee
-            ? message + " Late fee to collect: " + NovaPS.money(done.lateFee)
+          fee
+            ? message + " Late fee to collect: " + NovaPS.money(fee)
             : message,
         );
         m.close(); // done: no need to press the X
@@ -311,50 +315,15 @@ window.NovaAdmin = (function () {
           );
         }
       }
-      if (order.status === "complete" && order.type !== "extend") {
-        // The rental is in the customer's hands: show the countdown and any late fee
-        var left = NovaPS.rentals.msLeft(order);
-        var pill = el(
-          "span",
-          "rounded-md px-2 py-0.5 text-xs text-white tabular-nums " +
-            NovaPS.rentalTone(left).pill,
-          NovaPS.formatHMS(left),
-        );
-        kv(info, "Time remaining", "").lastChild.replaceWith(pill);
-        if (order.extraDays)
-          kv(info, "Extended", "+" + NovaPS.formatDays(order.extraDays));
-        var waitingExt = NovaPS.rentals.pendingExtension(order);
-        if (waitingExt) {
-          kv(
-            info,
-            "Extension waiting",
-            "+" +
-              NovaPS.formatDays(waitingExt.items[0].days) +
-              " (" +
-              waitingExt.id +
-              "), clock paused",
-            "text-indigo-500",
-          );
-        }
-        if (left <= 0) {
-          kv(
-            info,
-            "Late fee now",
-            NovaPS.money(NovaPS.rentals.fine(order)) +
-              " (" +
-              NovaPS.rentals.fineMinutes(order) +
-              " min)",
-            "font-semibold text-red-600",
-          );
-        }
-      }
-      if (order.lateFee)
+      var lateTotal = order.type === "extend" ? 0 : NovaPS.lateFeeOf(order);
+      if (lateTotal) {
         kv(
           info,
           "Late fee to collect",
-          NovaPS.money(order.lateFee) + " (" + order.lateMinutes + " min)",
+          NovaPS.money(lateTotal),
           "font-semibold text-red-600",
         );
+      }
       kv(
         info,
         "Ordered",
@@ -386,15 +355,6 @@ window.NovaAdmin = (function () {
             ", " +
             NovaPS.formatTime(order.completedAt),
         );
-      if (order.dueAt && order.status === "complete") {
-        var late = Date.now() > order.dueAt;
-        kv(
-          info,
-          "Return due",
-          NovaPS.formatDate(new Date(order.dueAt).toISOString()),
-          late ? "text-red-600" : "",
-        );
-      }
       if (order.returnedAt) {
         kv(
           info,
@@ -421,16 +381,113 @@ window.NovaAdmin = (function () {
       picture(customer, user.idcard, "Customer ID card");
 
       var units = section(body, "Units");
+      var rentalOut =
+        order.type !== "extend" &&
+        (order.status === "complete" || order.status === "returned");
       order.items.forEach(function (item, i) {
-        kv(
-          units,
-          "Unit " + (i + 1),
+        var name =
           NovaPS.PRODUCTS[item.unit].name +
-            " · " +
-            NovaPS.formatDays(item.days) +
-            " · " +
-            NovaPS.money(item.price),
+          (order.type === "extend" ? " (Extend)" : "");
+        var extended = item.extraDays
+          ? " + " + NovaPS.formatDays(item.extraDays) + " extended"
+          : "";
+        var line =
+          NovaPS.formatDays(item.days) +
+          extended +
+          " · " +
+          NovaPS.money(item.price);
+        if (!rentalOut) {
+          kv(units, "Unit " + (i + 1), name + " · " + line);
+          return;
+        }
+
+        // Rental: this unit has its OWN countdown and is returned on its own
+        var entry = NovaPS.rentals.entry(order, i);
+        var row = el("div", "border-b border-slate-100 py-2 text-sm");
+        row.appendChild(
+          el(
+            "p",
+            "font-medium",
+            "Unit " + (i + 1) + ": " + name + " · " + line,
+          ),
         );
+        var detail = el(
+          "div",
+          "mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1",
+        );
+
+        if (item.returnedAt || order.status === "returned") {
+          var back = item.returnedAt || order.returnedAt;
+          detail.appendChild(
+            el(
+              "span",
+              "text-slate-600",
+              "Returned " +
+                NovaPS.formatDate(back) +
+                (item.returnedLate ? " (overdue)" : ""),
+            ),
+          );
+          if (item.lateFee) {
+            detail.appendChild(
+              el(
+                "span",
+                "font-semibold text-red-600",
+                "Late fee " +
+                  NovaPS.money(item.lateFee) +
+                  " (" +
+                  item.lateMinutes +
+                  " min)",
+              ),
+            );
+          }
+        } else {
+          var left = NovaPS.rentals.msLeft(entry);
+          detail.appendChild(
+            el(
+              "span",
+              "rounded-md px-2 py-0.5 text-xs text-white tabular-nums " +
+                NovaPS.rentalTone(left).pill,
+              NovaPS.formatHMS(left),
+            ),
+          );
+          var waitingExt = NovaPS.rentals.pendingExtension(entry);
+          if (waitingExt) {
+            detail.appendChild(
+              el(
+                "span",
+                "text-xs text-indigo-500",
+                "Extension +" +
+                  NovaPS.formatDays(waitingExt.items[0].days) +
+                  " waiting, clock paused",
+              ),
+            );
+          }
+          if (left <= 0) {
+            detail.appendChild(
+              el(
+                "span",
+                "text-xs font-semibold text-red-600",
+                "Late fee now " +
+                  NovaPS.money(NovaPS.rentals.fine(entry)) +
+                  " (" +
+                  NovaPS.rentals.fineMinutes(entry) +
+                  " min)",
+              ),
+            );
+          }
+          var returnBtn = el(
+            "button",
+            "btn btn-mini btn-mini-green ml-auto",
+            "Mark returned",
+          );
+          returnBtn.type = "button";
+          returnBtn.addEventListener("click", function () {
+            act("return", "", "Unit returned: it is back in stock", i);
+          });
+          detail.appendChild(returnBtn);
+        }
+        row.appendChild(detail);
+        units.appendChild(row);
       });
       kv(units, "Total", NovaPS.money(order.total), "font-bold text-black");
 
@@ -470,12 +527,6 @@ window.NovaAdmin = (function () {
         actions.appendChild(
           button("Confirm delivered", "btn-indigo", function () {
             act("deliver", "", "Order complete: the rental has started");
-          }),
-        );
-      } else if (order.status === "complete") {
-        actions.appendChild(
-          button("Mark as returned", "btn-indigo", function () {
-            act("return", "", "Unit returned: it is back in stock");
           }),
         );
       }

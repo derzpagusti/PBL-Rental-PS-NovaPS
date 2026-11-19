@@ -1,16 +1,18 @@
 /*
- * Extend Rental page (?order=<id of a rental that is in your hands>).
+ * Extend Rental page (?order=<id>&unit=<number of the unit in that order>).
  * Requires js/shared/session.js and orders.js.
  *
- * A rental can last 7 days in total. If it is overdue, the late fee
- * (Rp 1.000 per minute) is added to the price of the extension.
+ * Every unit is extended on its own. A unit can be rented 7 days in total.
+ * If it is overdue, the late fee (Rp 1.000 per minute) is added to the price.
  */
 (function () {
   function $(id) {
     return document.getElementById(id);
   }
 
-  var id = new URLSearchParams(location.search).get("order");
+  var params = new URLSearchParams(location.search);
+  var id = params.get("order");
+  var index = Number(params.get("unit")) || 0;
 
   // Only one unpaid order at a time: send the customer home, where the pop-up explains it
   if (NovaPS.orders.unpaid()) {
@@ -18,13 +20,25 @@
     return;
   }
 
-  var parent = id ? NovaPS.orders.get(id) : null;
-  if (!parent || parent.type === "extend" || parent.status !== "complete") {
+  function loadEntry() {
+    var order = id ? NovaPS.orders.get(id) : null;
+    if (
+      !order ||
+      order.type === "extend" ||
+      order.status !== "complete" ||
+      !order.items[index]
+    )
+      return null;
+    var entry = NovaPS.rentals.entry(order, index);
+    return entry.item.returnedAt ? null : entry;
+  }
+
+  var entry = loadEntry();
+  if (!entry) {
     location.replace("time-remaining.html");
     return;
   }
-
-  if (NovaPS.rentals.pendingExtension(parent)) {
+  if (NovaPS.rentals.pendingExtension(entry)) {
     location.replace("time-remaining.html"); // wait for the admin first
     return;
   }
@@ -33,7 +47,8 @@
   var checkout = $("checkout");
   var hint = $("checkout-hint");
   var formError = $("form-error");
-  var max = NovaPS.rentals.maxExtend(parent);
+  var max = NovaPS.rentals.maxExtend(entry);
+  var unitName = NovaPS.PRODUCTS[entry.item.unit].name;
 
   /* ---------- duration choices ---------- */
 
@@ -49,7 +64,7 @@
   select.disabled = max === 0;
   $("days-hint").textContent =
     max === 0
-      ? "This rental already has the maximum of " +
+      ? "This unit already has the maximum of " +
         NovaPS.MAX_TOTAL_DAYS +
         " days."
       : "Max. " +
@@ -61,27 +76,24 @@
   /* ---------- live numbers ---------- */
 
   function refresh() {
-    parent = NovaPS.orders.get(id) || parent;
-    if (parent.status !== "complete") {
+    entry = loadEntry();
+    if (!entry) {
       location.replace("time-remaining.html"); // returned in the meantime
       return;
     }
 
-    var left = NovaPS.rentals.msLeft(parent);
-    var due = new Date(NovaPS.rentals.dueAt(parent)).toISOString();
+    var left = NovaPS.rentals.msLeft(entry);
+    var due = new Date(NovaPS.rentals.dueAt(entry)).toISOString();
+    var many = entry.order.items.length > 1;
     NovaPS.renderRows($("current-rows"), [
-      { label: "Order ID", value: parent.id },
+      { label: "Order ID", value: entry.order.id },
       {
         label: "Unit",
-        value: parent.items
-          .map(function (i) {
-            return NovaPS.PRODUCTS[i.unit].name;
-          })
-          .join(" + "),
+        value: unitName + (many ? " (Unit #" + (entry.index + 1) + ")" : ""),
       },
       {
         label: "Rental duration",
-        value: NovaPS.formatDays(NovaPS.rentals.totalDays(parent)),
+        value: NovaPS.formatDays(NovaPS.rentals.totalDays(entry)),
       },
       {
         label: "Return before",
@@ -94,17 +106,17 @@
       },
     ]);
 
-    var fine = NovaPS.rentals.fine(parent);
+    var fine = NovaPS.rentals.fine(entry);
     var note = $("overdue-note");
     note.hidden = fine === 0;
     if (fine) {
       note.textContent =
-        "Your rental is overdue. A late fee of " +
+        "This unit is overdue. A late fee of " +
         NovaPS.money(NovaPS.FINE_PER_MIN) +
         " per minute is added to the extension: " +
         NovaPS.money(fine) +
         " so far (" +
-        NovaPS.rentals.fineMinutes(parent) +
+        NovaPS.rentals.fineMinutes(entry) +
         " min).";
     }
 
@@ -112,25 +124,16 @@
     var summary = $("summary");
     summary.hidden = !days;
     if (days) {
-      var items = parent.items.map(function (item) {
-        return {
-          unit: item.unit,
-          days: days,
-          price: NovaPS.PRODUCTS[item.unit].price * days,
-        };
-      });
-      var sum = items.reduce(function (t, item) {
-        return t + item.price;
-      }, 0);
+      var price = NovaPS.PRODUCTS[entry.item.unit].price * days;
       NovaPS.renderRows(
         $("summary-rows"),
         NovaPS.summaryRows({
-          customer: parent.customer,
-          items: items,
+          customer: entry.order.customer,
+          items: [{ unit: entry.item.unit, days: days, price: price }],
           type: "extend",
           fine: fine,
-          fineMinutes: NovaPS.rentals.fineMinutes(parent),
-          total: sum + fine,
+          fineMinutes: NovaPS.rentals.fineMinutes(entry),
+          total: price + fine,
         }),
       );
     }
@@ -153,7 +156,7 @@
     checkout.textContent = "Please wait…";
     try {
       // TODO: send the extension to the backend API.
-      var order = NovaPS.orders.createExtension(id, select.value);
+      var order = NovaPS.orders.createExtension(id, index, select.value);
       location.href = "payment.html?order=" + encodeURIComponent(order.id);
     } catch (err) {
       formError.textContent = err.message;

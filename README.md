@@ -84,6 +84,8 @@ already enabled in `.vscode/settings.json`.
 ## Rentals, extensions and late fees (demo)
 
 - The countdown starts when the admin confirms delivery (status Complete).
+- Every UNIT has its own rental time, extension and return (an order with a
+  3-day and a 2-day unit shows two separate countdowns).
 - Pop-ups appear at 4 hours and 1 hour left. After the time is over the
   customer can only open Time Remaining or pay an extension.
 - Late fee: Rp 1.000 for every started minute after the time is over.

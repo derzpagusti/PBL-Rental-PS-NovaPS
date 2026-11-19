@@ -53,6 +53,49 @@
     idInput.removeAttribute("data-validate");
   }
 
+  /* ---------- edit the identity again (locked = grey, editing = white + indigo) ---------- */
+
+  var editBtn = $("edit-customer");
+  var editBadge = $("editing-badge");
+  var hintText = $("customer-hint-text");
+  var section = form.querySelector("[data-customer]");
+  var editing = false;
+
+  function setEditing(on) {
+    editing = on;
+    section.toggleAttribute("data-editing", on); // Tailwind: data-[editing]:...
+    CUSTOMER_FIELDS.forEach(function (key) {
+      var input = $(key);
+      input.readOnly = !on && !!input.value; // a box with text locks again when done
+    });
+    idInput.disabled = !on && (!!profile.idcard || !!idInput.files[0]);
+    editBtn.textContent = on ? "Done" : "Edit";
+    editBadge.hidden = !on;
+    hintText.textContent = on
+      ? "You are editing your details. They are saved to"
+      : "Filled in from your account. Press Edit to change it. Changes are saved to";
+    if (on) $(CUSTOMER_FIELDS[0]).focus();
+    refresh();
+  }
+
+  // Nothing is locked yet (first order): every box is already editable
+  editBtn.hidden =
+    !CUSTOMER_FIELDS.some(function (key) {
+      return !!profile[key];
+    }) && !profile.idcard;
+  editBtn.addEventListener("click", function () {
+    setEditing(!editing);
+  });
+
+  // Only needed when an ID card already exists (then the field has no data-validate)
+  function checkId() {
+    var field = idInput.closest("[data-field]");
+    var msg = idInput.files[0] ? NovaPS.rules.file("", idInput) : "";
+    field.toggleAttribute("data-invalid", !!msg);
+    field.querySelector("[data-error]").textContent = msg;
+    return !msg;
+  }
+
   function customerComplete() {
     var ok = CUSTOMER_FIELDS.every(function (key) {
       var input = $(key);
@@ -80,7 +123,8 @@
     var isImage = !!file && /^image\//.test(file.type);
     if (isImage) upload.querySelector("img").src = URL.createObjectURL(file);
     upload.toggleAttribute("data-has-image", isImage);
-    NovaPS.checkField(idInput, form);
+    if (idInput.hasAttribute("data-validate")) NovaPS.checkField(idInput, form);
+    else checkId();
     refresh();
   });
 
@@ -248,6 +292,13 @@
       .forEach(function (el) {
         if (!el.disabled && !NovaPS.checkField(el, form)) ok = false;
       });
+    if (
+      idInput.files[0] &&
+      !idInput.hasAttribute("data-validate") &&
+      !checkId()
+    ) {
+      ok = false; // a new ID card picture that is not a valid image
+    }
     if (!ok || checkout.disabled) return;
 
     checkout.disabled = true;
@@ -263,16 +314,20 @@
       return { unit: unitOf(block), days: daysOf(block) };
     });
     var file = idInput.files[0];
-    var idPromise =
-      file && !profile.idcard
-        ? NovaPS.imageToDataUrl(file, 900)
-        : Promise.resolve(profile.idcard || "");
+    var idPromise = file
+      ? NovaPS.imageToDataUrl(file, 900) // a new picture chosen while editing
+      : Promise.resolve(profile.idcard || "");
 
     idPromise
       .then(function (idcard) {
         // Remember the details for next time (and for My Profile)
         var patch = Object.assign({}, customer);
         if (idcard) patch.idcard = idcard;
+        if (
+          customer.email.toLowerCase() !== (profile.email || "").toLowerCase()
+        ) {
+          NovaPS.orders.renameOwner(profile.email, customer.email); // keep the order history
+        }
         NovaPS.profile.set(patch);
 
         // TODO: send the order to the backend API. The server must reserve the stock.

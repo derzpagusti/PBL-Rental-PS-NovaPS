@@ -104,7 +104,7 @@
       return o.type === "extend" ? 0 : o.items.length;
     };
     var income = function (o) {
-      return o.total + (o.lateFee || 0);
+      return o.total + (o.type === "extend" ? 0 : NovaPS.lateFeeOf(o));
     };
     var month = done.filter(function (o) {
       return monthKey(o) === thisMonth;

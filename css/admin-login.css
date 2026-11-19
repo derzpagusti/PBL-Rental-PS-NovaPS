@@ -25,6 +25,7 @@
     --color-slate-300: oklch(86.9% 0.022 252.894);
     --color-slate-400: oklch(70.4% 0.04 256.788);
     --color-slate-500: oklch(55.4% 0.046 257.417);
+    --color-slate-600: oklch(44.6% 0.043 257.281);
     --color-slate-800: oklch(27.9% 0.041 260.031);
     --color-slate-900: oklch(20.8% 0.042 265.755);
     --color-slate-950: oklch(12.9% 0.042 264.695);
@@ -282,6 +283,9 @@
   .mt-1 {
     margin-top: var(--spacing);
   }
+  .mt-1\.5 {
+    margin-top: calc(var(--spacing) * 1.5);
+  }
   .mt-2 {
     margin-top: calc(var(--spacing) * 2);
   }
@@ -302,6 +306,9 @@
   }
   .mb-6 {
     margin-bottom: calc(var(--spacing) * 6);
+  }
+  .ml-auto {
+    margin-left: auto;
   }
   .block {
     display: block;
@@ -346,6 +353,9 @@
   .shrink-0 {
     flex-shrink: 0;
   }
+  .flex-wrap {
+    flex-wrap: wrap;
+  }
   .place-items-center {
     place-items: center;
   }
@@ -363,6 +373,12 @@
   }
   .gap-4 {
     gap: calc(var(--spacing) * 4);
+  }
+  .gap-x-3 {
+    column-gap: calc(var(--spacing) * 3);
+  }
+  .gap-y-1 {
+    row-gap: var(--spacing);
   }
   .overflow-hidden {
     overflow: hidden;
@@ -493,6 +509,10 @@
     --tw-font-weight: var(--font-weight-bold);
     font-weight: var(--font-weight-bold);
   }
+  .font-medium {
+    --tw-font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-medium);
+  }
   .font-semibold {
     --tw-font-weight: var(--font-weight-semibold);
     font-weight: var(--font-weight-semibold);
@@ -536,6 +556,9 @@
   }
   .text-slate-500 {
     color: var(--color-slate-500);
+  }
+  .text-slate-600 {
+    color: var(--color-slate-600);
   }
   .text-slate-800 {
     color: var(--color-slate-800);
@@ -874,42 +897,11 @@
       --tw-outline-style: none;
       outline-style: none;
     }
-    &:read-only {
-      cursor: default;
-    }
-    &:read-only {
-      border-color: var(--color-slate-200);
-    }
-    &:read-only {
-      background-color: var(--color-slate-100);
-    }
-    &:read-only {
-      color: var(--color-slate-500);
-    }
-    &:read-only {
-      &:hover {
-        @media (hover: hover) {
-          border-color: var(--color-slate-200);
-        }
-      }
-    }
-    &:read-only {
-      &:focus {
-        border-color: var(--color-slate-200);
-      }
-    }
-    &:read-only {
-      &:focus {
-        --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0
-          calc(0px + var(--tw-ring-offset-width))
-          var(--tw-ring-color, currentcolor);
-        box-shadow:
-          var(--tw-inset-shadow), var(--tw-inset-ring-shadow),
-          var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-      }
-    }
     &:disabled {
       cursor: not-allowed;
+    }
+    &:disabled {
+      border-color: var(--color-slate-200);
     }
     &:disabled {
       background-color: var(--color-slate-100);
@@ -919,6 +911,33 @@
     }
     &:is(:where(.group\/field)[data-invalid] *) {
       border-color: var(--color-red-600);
+    }
+    &:is(input, textarea):read-only {
+      cursor: default;
+      border-color: var(--color-slate-200);
+      background-color: var(--color-slate-100);
+      color: var(--color-slate-500);
+    }
+    &:is(input, textarea):read-only:hover,
+    &:is(input, textarea):read-only:focus {
+      border-color: var(--color-slate-200);
+      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0
+        calc(0px + var(--tw-ring-offset-width))
+        var(--tw-ring-color, currentcolor);
+      box-shadow:
+        var(--tw-inset-shadow), var(--tw-inset-ring-shadow),
+        var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    }
+  }
+  select.field-input:enabled {
+    cursor: pointer;
+    border-color: var(--color-indigo-300);
+    background-color: var(--color-white);
+    color: var(--color-slate-800);
+    &:hover {
+      @media (hover: hover) {
+        border-color: var(--color-indigo-500);
+      }
     }
   }
   .btn-mini {

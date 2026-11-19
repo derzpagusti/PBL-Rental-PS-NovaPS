@@ -1,9 +1,10 @@
 /*
  * "Your rental is ending" pop-ups for customers, on every customer page.
  * Requires js/shared/session.js and js/shared/orders.js.
+ * Every UNIT has its own time, so every unit gets its own warnings.
  *
- *  - less than 4 hours left  -> pop-up (once per rental)
- *  - less than 1 hour left   -> pop-up (once per rental)
+ *  - less than 4 hours left  -> pop-up (once per unit)
+ *  - less than 1 hour left   -> pop-up (once per unit)
  *  - overdue                 -> pop-up that cannot be closed. The customer can
  *    only open Time Remaining (and pay an extension): no ordering, no profile.
  *    Late fee: Rp 1.000 for every minute after the time is over.
@@ -47,22 +48,23 @@
     }
   }
 
-  function markSeen(orderId, level) {
+  function markSeen(key, level) {
     var seen = seenAlerts();
-    seen[orderId] = seen[orderId] || {};
-    seen[orderId][level] = true;
-    if (level === "h1") seen[orderId].h4 = true; // the 4 hour warning is no longer needed
+    seen[key] = seen[key] || {};
+    seen[key][level] = true;
+    if (level === "h1") seen[key].h4 = true; // the 4 hour warning is no longer needed
     try {
       localStorage.setItem(ALERTS_KEY, JSON.stringify(seen));
     } catch (e) {}
   }
 
-  function unitNames(order) {
-    return order.items
-      .map(function (i) {
-        return NovaPS.PRODUCTS[i.unit].name;
-      })
-      .join(" + ");
+  // "PS4" or "PS4 · Unit #2" (when the order has two units)
+  function unitLabel(entry) {
+    var name = NovaPS.PRODUCTS[entry.item.unit].name;
+    return (
+      name +
+      (entry.order.items.length > 1 ? " · Unit #" + (entry.index + 1) : "")
+    );
   }
 
   /* ---------- the pop-up (built once) ---------- */
@@ -114,7 +116,7 @@
   var WARN_ICON =
     '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>';
 
-  var current = null; // { kind, order }
+  var current = null; // { kind, entry, waiting }
   var banner = null;
 
   function linkButton(label, href, className) {
@@ -123,8 +125,14 @@
     return a;
   }
 
-  function extendHref(order) {
-    return base + "extend.html?order=" + encodeURIComponent(order.id);
+  function extendHref(entry) {
+    return (
+      base +
+      "extend.html?order=" +
+      encodeURIComponent(entry.order.id) +
+      "&unit=" +
+      entry.index
+    );
   }
 
   function setOpen(open) {
@@ -138,37 +146,37 @@
       tone: "bg-amber-100 text-amber-600",
       icon: CLOCK_ICON,
       title: "Your rental ends in less than 4 hours",
-      text: "Please return the unit to NovaPS, or extend your rental before the time runs out. After that, a late fee of Rp 1.000 per minute applies.",
+      text: "Please return the unit to NovaPS, or extend it before the time runs out. After that, a late fee of Rp 1.000 per minute applies.",
     },
     h1: {
       tone: "bg-orange-100 text-orange-700",
       icon: CLOCK_ICON,
       title: "Less than 1 hour left!",
-      text: "Return the unit now, or extend your rental. After the time is over, a late fee of Rp 1.000 per minute applies.",
+      text: "Return the unit now, or extend it. After the time is over, a late fee of Rp 1.000 per minute applies.",
     },
     over: {
       tone: "bg-red-100 text-red-700",
       icon: WARN_ICON,
       title: "Your rental is overdue",
-      text: "Return the unit to NovaPS, or extend your rental and pay the late fee. Until then you can only view Time Remaining and you cannot order.",
+      text: "Return the unit to NovaPS, or extend it and pay the late fee. Until then you can only view Time Remaining and you cannot order.",
     },
   };
 
-  function open(kind, order) {
-    current = { kind: kind, order: order };
+  function open(kind, entry) {
     var copy = COPY[kind];
     // A paid extension is waiting for the admin: the late fee is paused
-    var waiting = kind === "over" && !!NovaPS.rentals.pendingExtension(order);
-    current.waiting = waiting;
+    var waiting = kind === "over" && !!NovaPS.rentals.pendingExtension(entry);
+    current = { kind: kind, entry: entry, waiting: waiting };
+
     icon.className =
       "mx-auto mb-3.5 grid size-14 place-items-center rounded-full " +
       copy.tone;
     icon.innerHTML = copy.icon; // fixed strings above, never user input
     title.textContent = waiting ? "Waiting for admin verification" : copy.title;
     text.textContent = waiting
-      ? "Your extension payment was received. The late fee is paused until the admin verifies it. Until then you can only view Time Remaining."
+      ? "Your extension payment was received. The late fee of this unit is paused until the admin verifies it. Until then you can only view Time Remaining."
       : copy.text;
-    info.textContent = unitNames(order) + " · " + order.id;
+    info.textContent = unitLabel(entry) + " · " + entry.order.id;
     fineBox.hidden = kind !== "over";
     logout.hidden = kind !== "over";
 
@@ -185,7 +193,7 @@
       }
       if (!waiting) {
         actions.appendChild(
-          linkButton("Extend & pay fine", extendHref(order), "btn-indigo"),
+          linkButton("Extend & pay fine", extendHref(entry), "btn-indigo"),
         );
       }
     } else {
@@ -201,7 +209,7 @@
       });
       actions.appendChild(later);
       actions.appendChild(
-        linkButton("Extend rental", extendHref(order), "btn-indigo"),
+        linkButton("Extend", extendHref(entry), "btn-indigo"),
       );
     }
     update();
@@ -211,16 +219,16 @@
   // Live numbers inside the open pop-up
   function update() {
     if (!current) return;
-    var left = NovaPS.rentals.msLeft(current.order);
+    var left = NovaPS.rentals.msLeft(current.entry);
     clock.textContent = NovaPS.formatHMS(left);
     clock.className =
       "mt-4 font-display text-5xl font-bold " + NovaPS.rentalTone(left).text;
     if (current.kind === "over") {
       fineBox.textContent =
         (current.waiting ? "Late fee paused at: " : "Late fee so far: ") +
-        NovaPS.money(NovaPS.rentals.fine(current.order)) +
+        NovaPS.money(NovaPS.rentals.fine(current.entry)) +
         " (" +
-        NovaPS.rentals.fineMinutes(current.order) +
+        NovaPS.rentals.fineMinutes(current.entry) +
         " min × " +
         NovaPS.money(NovaPS.FINE_PER_MIN) +
         ")";
@@ -229,22 +237,26 @@
 
   /* ---------- banner on the pages an overdue customer may still use ---------- */
 
-  function showBanner(order) {
+  function showBanner(entry, count) {
     if (!banner) {
       banner = el("div", "bg-red-700 px-4 py-2 text-center text-sm text-white");
       document.body.insertBefore(banner, document.body.firstChild);
     }
-    var fine = NovaPS.money(NovaPS.rentals.fine(order));
-    var waiting = !!NovaPS.rentals.pendingExtension(order);
+    var waiting = !!NovaPS.rentals.pendingExtension(entry);
+    var more = count > 1 ? " (" + count + " units overdue)" : "";
     banner.textContent = "";
     banner.appendChild(
       document.createTextNode(
-        "Your rental is overdue (" +
-          NovaPS.formatHMS(NovaPS.rentals.msLeft(order)) +
+        unitLabel(entry) +
+          " is overdue (" +
+          NovaPS.formatHMS(NovaPS.rentals.msLeft(entry)) +
+          ")" +
+          more +
+          ". " +
           (waiting
-            ? "). Extension waiting for admin verification, late fee paused at: "
-            : "). Late fee so far: ") +
-          fine +
+            ? "Extension waiting for admin verification, late fee paused at: "
+            : "Late fee so far: ") +
+          NovaPS.money(NovaPS.rentals.fine(entry)) +
           ". ",
       ),
     );
@@ -254,7 +266,7 @@
         "font-semibold underline underline-offset-2",
         "Extend & pay fine",
       );
-      link.href = extendHref(order);
+      link.href = extendHref(entry);
       banner.appendChild(link);
     }
   }
@@ -269,27 +281,29 @@
   /* ---------- check every second ---------- */
 
   function check() {
-    var rentals = NovaPS.rentals.mine();
-    var overdue = rentals.filter(function (o) {
-      return NovaPS.rentals.msLeft(o) <= 0;
-    })[0];
+    var units = NovaPS.rentals.mine();
+    var overdue = units.filter(function (e) {
+      return NovaPS.rentals.msLeft(e) <= 0;
+    });
 
-    if (overdue) {
+    if (overdue.length) {
+      var first = overdue[0];
       if (ALLOWED_WHEN_OVERDUE.indexOf(page) !== -1) {
-        showBanner(overdue);
+        showBanner(first, overdue.length);
         if (current && current.kind === "over") {
           setOpen(false);
           current = null;
         }
       } else {
         hideBanner();
-        var waitingNow = !!NovaPS.rentals.pendingExtension(overdue);
+        var waitingNow = !!NovaPS.rentals.pendingExtension(first);
         if (
           !current ||
           current.kind !== "over" ||
+          current.entry.key !== first.key ||
           current.waiting !== waitingNow
         ) {
-          open("over", overdue);
+          open("over", first);
         } else {
           update();
         }
@@ -299,7 +313,7 @@
 
     hideBanner();
     if (current && current.kind === "over") {
-      setOpen(false); // an extension was paid or the unit was returned
+      setOpen(false); // an extension was accepted or the units were returned
       current = null;
     }
     if (current) {
@@ -309,15 +323,15 @@
     if (QUIET.indexOf(page) !== -1) return;
 
     var seen = seenAlerts();
-    for (var i = 0; i < rentals.length; i++) {
-      var order = rentals[i];
-      var left = NovaPS.rentals.msLeft(order);
-      var shown = seen[order.id] || {};
+    for (var i = 0; i < units.length; i++) {
+      var entry = units[i];
+      var left = NovaPS.rentals.msLeft(entry);
+      var shown = seen[entry.key] || {};
       var level =
         left <= NovaPS.HOUR_MS ? "h1" : left <= 4 * NovaPS.HOUR_MS ? "h4" : "";
       if (level && !shown[level] && !(level === "h4" && shown.h1)) {
-        markSeen(order.id, level);
-        open(level, order);
+        markSeen(entry.key, level);
+        open(level, entry);
         return;
       }
     }

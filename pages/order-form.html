@@ -179,10 +179,30 @@
       </h1>
 
       <form id="order-form" novalidate>
-        <section class="rounded-lg border border-slate-200 bg-white p-6">
-          <h2 class="font-display text-base font-bold text-black mb-3">
-            Customer Information
-          </h2>
+        <section
+          data-customer
+          class="group/cust rounded-lg border border-slate-200 bg-white p-6 transition-colors duration-200 data-[editing]:border-indigo-300 data-[editing]:bg-indigo-50/40"
+        >
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <h2 class="font-display text-base font-bold text-black">
+                Customer Information
+              </h2>
+              <span
+                id="editing-badge"
+                hidden
+                class="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold text-indigo-600"
+                >Editing</span
+              >
+            </div>
+            <button
+              type="button"
+              id="edit-customer"
+              class="btn border-blue-600 bg-white px-3 py-0.5 text-sm font-medium text-blue-600 hover:bg-blue-600 hover:text-white"
+            >
+              Edit
+            </button>
+          </div>
           <div data-field class="group/field mb-2.5">
             <label for="fullname" class="mb-0.5 block text-base"
               >Full Name</label
@@ -193,7 +213,7 @@
               name="fullname"
               autocomplete="name"
               data-validate="required"
-              class="field-input h-10"
+              class="field-input h-10 group-data-[editing]/cust:border-indigo-400 group-data-[editing]/cust:bg-white"
             />
             <p
               data-error
@@ -211,7 +231,7 @@
               name="phone"
               autocomplete="tel"
               data-validate="phone"
-              class="field-input h-10"
+              class="field-input h-10 group-data-[editing]/cust:border-indigo-400 group-data-[editing]/cust:bg-white"
             />
             <p
               data-error
@@ -227,7 +247,7 @@
               name="address"
               autocomplete="street-address"
               data-validate="required"
-              class="field-input h-10"
+              class="field-input h-10 group-data-[editing]/cust:border-indigo-400 group-data-[editing]/cust:bg-white"
             />
             <p
               data-error
@@ -243,7 +263,7 @@
               name="email"
               autocomplete="email"
               data-validate="email"
-              class="field-input h-10"
+              class="field-input h-10 group-data-[editing]/cust:border-indigo-400 group-data-[editing]/cust:bg-white"
             />
             <p
               data-error
@@ -258,7 +278,7 @@
             <label
               for="idcard"
               data-upload
-              class="group/upload relative grid h-16 cursor-pointer place-items-center overflow-hidden rounded-lg border-[1.5px] border-dashed border-slate-300 bg-slate-100 text-slate-400 transition-all duration-150 hover:border-indigo-500 hover:bg-indigo-50 hover:text-indigo-500 focus-within:ring-[3px] focus-within:ring-indigo-500/20 has-[:disabled]:cursor-default has-[:disabled]:hover:border-slate-300 has-[:disabled]:hover:bg-slate-100 has-[:disabled]:hover:text-slate-400 group-data-[invalid]/field:border-red-600 data-[has-image]:h-40"
+              class="group/upload relative grid h-16 cursor-pointer place-items-center overflow-hidden rounded-lg border-[1.5px] border-dashed border-slate-300 bg-slate-100 text-slate-400 transition-all duration-150 hover:border-indigo-500 hover:bg-indigo-50 hover:text-indigo-500 focus-within:ring-[3px] focus-within:ring-indigo-500/20 has-[:disabled]:cursor-default has-[:disabled]:hover:border-slate-300 has-[:disabled]:hover:bg-slate-100 has-[:disabled]:hover:text-slate-400 group-data-[editing]/cust:border-indigo-400 group-data-[editing]/cust:bg-white group-data-[invalid]/field:border-red-600 data-[has-image]:h-40"
             >
               <svg
                 class="group-data-[has-image]/upload:hidden"
@@ -296,7 +316,10 @@
             ></p>
           </div>
           <p id="customer-hint" class="mt-3 text-xs text-slate-500">
-            Filled in from your account. To change it, go to
+            <span id="customer-hint-text"
+              >Filled in from your account. Press Edit to change it. Changes are
+              saved to</span
+            >
             <a
               href="account.html"
               class="text-blue-600 underline underline-offset-2 hover:text-blue-700"
