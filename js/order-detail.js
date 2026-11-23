@@ -33,7 +33,7 @@
     pending: {
       tone: "text-green-500",
       glyph: "check",
-      title: "Your Payment Is Complete!",
+      title: "Order Received!",
       text: "Thank you. We have received your order, and it is awaiting admin verification.",
       note: "Please check your order status to see the status of your order",
     },
@@ -234,6 +234,9 @@
         value: NovaPS.money(lateFee),
         valueClass: "text-red-600",
       });
+    if (order.paymentMethod === "cash") {
+      extra.push({ label: "Payment", value: "Cash (Tunai)" });
+    }
     if (extension) {
       extra.push({
         label: "Extended unit",

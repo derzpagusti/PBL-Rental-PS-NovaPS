@@ -298,14 +298,44 @@
     })[0];
   }
 
+  // The order that stops the customer from placing a new one:
+  //  - QRIS: an unpaid (not_paid) order must be paid first
+  //  - Cash: the order is only "done" once it becomes complete
+  // Returns { order, message } or null when a new order is allowed.
+  function blocker() {
+    var mine = NovaPS.orders.all();
+    for (var i = 0; i < mine.length; i++) {
+      var o = mine[i];
+      if (o.status === "not_paid") {
+        return {
+          order: o,
+          message: "Please finish your unpaid order first.",
+        };
+      }
+      if (
+        o.paymentMethod === "cash" &&
+        (o.status === "pending" || o.status === "shipped")
+      ) {
+        return {
+          order: o,
+          message:
+            "Your cash order is still " +
+            (o.status === "pending" ? "waiting for admin verification" : "on its way") +
+            ". You can order again once it is complete.",
+        };
+      }
+    }
+    return null;
+  }
+
   function guardCustomer() {
     if (NovaPS.users.isBlocked(owner())) {
       throw new Error(
         "Your account has been blocked. Please contact the admin.",
       );
     }
-    if (NovaPS.orders.unpaid())
-      throw new Error("Please finish your unpaid order first.");
+    var blocked = blocker();
+    if (blocked) throw new Error(blocked.message);
   }
 
   function entryOf(order, index) {
@@ -319,6 +349,7 @@
 
   NovaPS.orders = {
     sweep: sweep,
+    blocker: blocker,
 
     // Orders of the logged-in user, newest first (rentals and extensions)
     all: function () {
@@ -345,7 +376,7 @@
       );
     },
 
-    // data = { customer, items: [{ unit, days }], notes }
+    // data = { customer, items: [{ unit, days }], notes, paymentMethod: "qris"|"cash" }
     create: function (data) {
       sweep();
       guardCustomer();
@@ -354,6 +385,8 @@
           "You have an overdue rental. Return the unit or extend it first.",
         );
       }
+
+      var method = data.paymentMethod === "cash" ? "cash" : "qris";
 
       var items = data.items.map(function (item) {
         var product = PRODUCTS[item.unit];
@@ -386,10 +419,17 @@
         items: items,
         notes: data.notes || "",
         total: total(items),
-        status: "not_paid",
+        paymentMethod: method,
+        // Cash: paid on the spot, so the order is pending right away
+        // (no "not_paid" step, no 5 minute timer). QRIS: waits for payment.
+        status: method === "cash" ? "pending" : "not_paid",
         createdAt: new Date(now).toISOString(),
-        expiresAt: now + PAY_WINDOW_MS,
       };
+      if (method === "cash") {
+        order.paidAt = new Date(now).toISOString(); // paid in cash at checkout
+      } else {
+        order.expiresAt = now + PAY_WINDOW_MS;
+      }
       var orders = allOrders();
       orders.push(order);
       write(ORDERS_KEY, orders);

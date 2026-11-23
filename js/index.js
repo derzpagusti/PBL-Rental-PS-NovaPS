@@ -114,10 +114,14 @@
         loginModal.open();
         return;
       }
-      var unpaid = NovaPS.orders.unpaid();
-      if (unpaid) {
-        e.preventDefault(); // no new order before the current one is paid
-        showUnpaid(unpaid);
+      var blocked = NovaPS.orders.blocker && NovaPS.orders.blocker();
+      if (blocked) {
+        e.preventDefault();
+        if (blocked.order.status === "not_paid") {
+          showUnpaid(blocked.order);
+        } else {
+          alert(blocked.message);
+        }
       }
       // otherwise the link opens the order form
     });
@@ -128,7 +132,7 @@
 
   // Remind logged-in users about an unpaid order as soon as the home page opens
   if (NovaPS.isLoggedIn()) {
-    var waiting = NovaPS.orders.unpaid();
-    if (waiting) showUnpaid(waiting);
+    var blocked = NovaPS.orders.blocker && NovaPS.orders.blocker();
+    if (blocked && blocked.order.status === "not_paid") showUnpaid(blocked.order);
   }
 })();

@@ -366,6 +366,9 @@ window.NovaAdmin = (function () {
       if (order.cancelReason) kv(info, "Cancel reason", order.cancelReason);
       if (order.rejectReason) kv(info, "Reject reason", order.rejectReason);
       if (order.notes) kv(info, "Notes", order.notes);
+      if (order.paymentMethod === "cash") {
+        kv(info, "Payment", "Cash (Tunai)");
+      }
 
       var customer = section(body, "Customer");
       kv(customer, "Name", order.customer.fullname);

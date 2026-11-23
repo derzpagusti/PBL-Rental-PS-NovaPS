@@ -188,20 +188,7 @@
               <h2 class="font-display text-base font-bold text-black">
                 Customer Information
               </h2>
-              <span
-                id="editing-badge"
-                hidden
-                class="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold text-indigo-600"
-                >Editing</span
-              >
             </div>
-            <button
-              type="button"
-              id="edit-customer"
-              class="btn border-blue-600 bg-white px-3 py-0.5 text-sm font-medium text-blue-600 hover:bg-blue-600 hover:text-white"
-            >
-              Edit
-            </button>
           </div>
           <div data-field class="group/field mb-2.5">
             <label for="fullname" class="mb-0.5 block text-base"
@@ -317,8 +304,7 @@
           </div>
           <p id="customer-hint" class="mt-3 text-xs text-slate-500">
             <span id="customer-hint-text"
-              >Filled in from your account. Press Edit to change it. Changes are
-              saved to</span
+              >You can edit your details here. Changes are saved to</span
             >
             <a
               href="account.html"
@@ -370,6 +356,46 @@
               class="field-input h-auto resize-none py-2"
             ></textarea>
           </div>
+          <div class="mt-4">
+            <h2 class="mb-2 font-display text-base font-bold text-black">
+              Payment Method
+            </h2>
+            <div role="radiogroup" class="grid grid-cols-2 gap-3">
+              <label
+                class="flex cursor-pointer flex-col gap-1 rounded-lg border border-slate-300 bg-white p-4 transition-all duration-150 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50"
+              >
+                <div class="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="qris"
+                    checked
+                    class="size-4 accent-indigo-600"
+                  />
+                  <span class="font-semibold text-black">QRIS</span>
+                </div>
+                <span class="text-xs text-slate-500">Pay online via QRIS</span>
+              </label>
+              <label
+                class="flex cursor-pointer flex-col gap-1 rounded-lg border border-slate-300 bg-white p-4 transition-all duration-150 has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50"
+              >
+                <div class="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="cash"
+                    class="size-4 accent-indigo-600"
+                  />
+                  <span class="font-semibold text-black">Cash</span>
+                </div>
+                <span class="text-xs text-slate-500">Pay at the counter</span>
+              </label>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">
+              Note: Cash payment orders cannot be repeated until current status is
+              "Complete". Late fee is Rp 1.000/minute.
+            </p>
+          </div>
         </section>
 
         <section
@@ -409,6 +435,41 @@
           class="mt-2 text-right text-xs text-slate-500"
         ></p>
       </form>
+
+      <!-- Confirmation modal -->
+      <div
+        id="confirmModal"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        class="group invisible fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-6 opacity-0 transition-all duration-200 data-[open]:visible data-[open]:opacity-100"
+      >
+        <div
+          class="w-full max-w-[400px] translate-y-4 scale-95 rounded-xl bg-white p-7 transition-transform duration-300 ease-[cubic-bezier(.2,.9,.3,1.2)] group-data-[open]:translate-y-0 group-data-[open]:scale-100"
+        >
+          <h2 class="font-display text-2xl font-bold">Confirm Order</h2>
+          <p class="mt-2 text-slate-600">
+            Are you sure you want to proceed with this order? You can review your
+            order details once more.
+          </p>
+          <div class="mt-6 flex gap-3">
+            <button
+              type="button"
+              data-close
+              class="btn btn-ghost flex-1 px-0 py-[11px] text-base"
+            >
+              Check again
+            </button>
+            <button
+              type="button"
+              id="confirm-btn"
+              class="btn btn-indigo flex-1 px-0 py-[11px] text-base"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
 
       <!-- One unit block (cloned by js/order-form.js) -->
       <template id="unit-template">

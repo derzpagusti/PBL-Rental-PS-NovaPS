@@ -38,53 +38,63 @@
   var profile = NovaPS.profile.get();
   var blocks = [];
 
+  // Confirmation modal
+  var confirmModal = $("confirmModal");
+  var confirmBtn = $("confirm-btn");
+  var pendingOrderData = null;
+
+  function openConfirm() {
+    confirmModal.setAttribute("data-open", "");
+    confirmModal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("overflow-hidden");
+    setTimeout(function () {
+      confirmBtn.focus();
+    }, 50);
+  }
+
+  function closeConfirm() {
+    confirmModal.removeAttribute("data-open");
+    confirmModal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("overflow-hidden");
+  }
+
+  confirmModal.addEventListener("click", function (e) {
+    if (e.target === confirmModal || e.target.hasAttribute("data-close"))
+      closeConfirm();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && confirmModal.hasAttribute("data-open"))
+      closeConfirm();
+  });
+
+  confirmBtn.addEventListener("click", function () {
+    closeConfirm();
+    if (pendingOrderData) createOrder(pendingOrderData);
+  });
+
   /* ---------- customer information (from the account) ---------- */
 
   CUSTOMER_FIELDS.forEach(function (key) {
     var input = $(key);
     input.value = profile[key] || "";
-    input.readOnly = !!input.value; // filled in from My Profile = locked
+    input.readOnly = false; // always editable: no Edit button needed
   });
 
   if (profile.idcard) {
     upload.querySelector("img").src = profile.idcard;
     upload.setAttribute("data-has-image", "");
-    idInput.disabled = true;
-    idInput.removeAttribute("data-validate");
+    idInput.removeAttribute("data-validate"); // already has an ID card: not required again
   }
 
-  /* ---------- edit the identity again (locked = grey, editing = white + indigo) ---------- */
+  /* ---------- customer information is always editable ---------- */
 
   var editBtn = $("edit-customer");
-  var editBadge = $("editing-badge");
-  var hintText = $("customer-hint-text");
-  var section = form.querySelector("[data-customer]");
-  var editing = false;
+  hintText = $("customer-hint-text");
 
-  function setEditing(on) {
-    editing = on;
-    section.toggleAttribute("data-editing", on); // Tailwind: data-[editing]:...
-    CUSTOMER_FIELDS.forEach(function (key) {
-      var input = $(key);
-      input.readOnly = !on && !!input.value; // a box with text locks again when done
-    });
-    idInput.disabled = !on && (!!profile.idcard || !!idInput.files[0]);
-    editBtn.textContent = on ? "Done" : "Edit";
-    editBadge.hidden = !on;
-    hintText.textContent = on
-      ? "You are editing your details. They are saved to"
-      : "Filled in from your account. Press Edit to change it. Changes are saved to";
-    if (on) $(CUSTOMER_FIELDS[0]).focus();
-    refresh();
-  }
-
-  // Nothing is locked yet (first order): every box is already editable
-  editBtn.hidden =
-    !CUSTOMER_FIELDS.some(function (key) {
-      return !!profile[key];
-    }) && !profile.idcard;
+  // Hide the Edit button entirely - fields are always editable
+  editBtn.hidden = true;
   editBtn.addEventListener("click", function () {
-    setEditing(!editing);
+    refresh();
   });
 
   // Only needed when an ID card already exists (then the field has no data-validate)
@@ -282,25 +292,7 @@
     formError.textContent = text;
   }
 
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    showError("");
-
-    var ok = true;
-    [].slice
-      .call(form.querySelectorAll("[data-validate]"))
-      .forEach(function (el) {
-        if (!el.disabled && !NovaPS.checkField(el, form)) ok = false;
-      });
-    if (
-      idInput.files[0] &&
-      !idInput.hasAttribute("data-validate") &&
-      !checkId()
-    ) {
-      ok = false; // a new ID card picture that is not a valid image
-    }
-    if (!ok || checkout.disabled) return;
-
+  function createOrder(data) {
     checkout.disabled = true;
     checkout.textContent = "Please wait…";
 
@@ -335,14 +327,49 @@
           customer: customer,
           items: items,
           notes: $("notes").value.trim(),
+          paymentMethod: data.paymentMethod,
         });
-        location.href = "payment.html?order=" + encodeURIComponent(order.id);
+
+        if (data.paymentMethod === "cash") {
+          // Cash: directly show the receipt (order-detail.html)
+          location.href = "order-detail.html?order=" + encodeURIComponent(order.id);
+        } else {
+          // QRIS: go to payment page
+          location.href = "payment.html?order=" + encodeURIComponent(order.id);
+        }
       })
       .catch(function (err) {
         showError(err.message);
         checkout.textContent = "Checkout";
         refresh();
       });
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    showError("");
+
+    var ok = true;
+    [].slice
+      .call(form.querySelectorAll("[data-validate]"))
+      .forEach(function (el) {
+        if (!el.disabled && !NovaPS.checkField(el, form)) ok = false;
+      });
+    if (
+      idInput.files[0] &&
+      !idInput.hasAttribute("data-validate") &&
+      !checkId()
+    ) {
+      ok = false; // a new ID card picture that is not a valid image
+    }
+    if (!ok || checkout.disabled) return;
+
+    var paymentMethod = form.querySelector('input[name="payment"]:checked')
+      ? form.querySelector('input[name="payment"]:checked').value
+      : "qris";
+
+    pendingOrderData = { paymentMethod: paymentMethod };
+    openConfirm();
   });
 
   /* ---------- start ---------- */
